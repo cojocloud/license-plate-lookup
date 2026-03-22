@@ -1,22 +1,22 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: California Plate Validator CI/CD Pipeline
+Description: License Plate Validator CI/CD Pipeline
 
 Parameters:
   Environment:
     Type: String
-    Default: production
+    Default: dev
     AllowedValues:
-      - development
+      - dev
       - staging
-      - production
+      - prod
   
   GitHubOwner:
     Type: String
-    Default: yourusername
+    Default: YOUR_GITHUB_USERNAME
   
   GitHubRepo:
     Type: String
-    Default: california-plate-validator
+    Default: license-plate-lookup
   
   GitHubBranch:
     Type: String
@@ -30,8 +30,8 @@ Resources:
   CodeBuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
-      Name: !Sub california-plate-validator-build-${Environment}
-      Description: Build and test California Plate Validator
+      Name: !Sub license-plate-validator-build-${Environment}
+      Description: Build and test License Plate Validator
       ServiceRole: !Ref CodeBuildServiceRole
       Source:
         Type: CODEPIPELINE
@@ -52,12 +52,12 @@ Resources:
       LogsConfig:
         CloudWatchLogs:
           Status: ENABLED
-          GroupName: !Sub /aws/codebuild/california-plate-validator-${Environment}
+          GroupName: !Sub /aws/codebuild/license-plate-validator-${Environment}
 
   CodePipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
-      Name: !Sub california-plate-validator-pipeline-${Environment}
+      Name: !Sub license-plate-validator-pipeline-${Environment}
       RoleArn: !GetAtt CodePipelineServiceRole.Arn
       ArtifactStore:
         Type: S3
@@ -106,8 +106,8 @@ Resources:
                 Version: 1
                 Provider: ECS
               Configuration:
-                ClusterName: !Sub california-plate-validator-cluster-${Environment}
-                ServiceName: !Sub california-plate-validator-service-${Environment}
+                ClusterName: !Sub license-plate-validator-cluster-${Environment}
+                ServiceName: !Sub license-plate-validator-service-${Environment}
                 FileName: imagedefinitions.json
               InputArtifacts:
                 - Name: BuildArtifact
@@ -116,7 +116,7 @@ Resources:
   ArtifactStoreBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub california-plate-validator-artifacts-${AWS::AccountId}-${Environment}
+      BucketName: !Sub license-plate-validator-artifacts-${AWS::AccountId}-${Environment}
       VersioningConfiguration:
         Status: Enabled
       LifecycleConfiguration:

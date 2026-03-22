@@ -33,9 +33,9 @@ print_warning() {
 }
 
 # Configuration
-PROJECT_NAME="california-plate-validator"
+PROJECT_NAME="license-plate-validator"
 VERSION="1.0.0"
-REGION=${AWS_DEFAULT_REGION:-"us-west-2"}
+REGION=${AWS_DEFAULT_REGION:-"us-east-1"}
 ENVIRONMENT=${ENVIRONMENT:-"dev"}
 DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME:-""}
 

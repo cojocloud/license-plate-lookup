@@ -1,5 +1,5 @@
 locals {
-  project_name = "california-plate-validator"
+  project_name = var.project_name
 
   # Common tags
   common_tags = {
@@ -7,7 +7,7 @@ locals {
     Environment = var.environment
     ManagedBy   = "Terraform"
     Owner       = var.owner
-    Application = "California License Plate Validator"
+    Application = "License Plate Validator"
   }
 
   # Naming conventions

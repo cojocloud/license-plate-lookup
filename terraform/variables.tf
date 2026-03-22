@@ -2,13 +2,13 @@
 variable "aws_region" {
   description = "AWS region where resources will be created"
   type        = string
-  default     = "us-west-2"
+  default     = "us-east-1"
 }
 # Project Configuration
 variable "project_name" {
   description = "Name of the project"
   type        = string
-  default     = "california-plate-validator"
+  default     = "license-plate-validator"
 }
 variable "aws_account_id" {
   description = "AWS Account ID"
@@ -91,7 +91,7 @@ variable "private_subnet_cidrs" {
 variable "availability_zones" {
   description = "List of availability zones"
   type        = list(string)
-  default     = ["us-west-2a", "us-west-2b", "us-west-2c"]
+  default     = ["us-east-1a", "us-east-1b", "us-east-1c"]
 }
 
 variable "allowed_cidr_blocks" {
@@ -122,13 +122,13 @@ variable "ecr_scan_on_push" {
 variable "github_owner" {
   description = "GitHub repository owner"
   type        = string
-  default     = "Joebaho"
+  default     = "cojocloud"
 }
 
 variable "github_repo_name" {
   description = "GitHub repository name"
   type        = string
-  default     = "CA-LIC-PLATE"
+  default     = "license-plate-lookup"
 }
 
 variable "github_branch" {
@@ -171,7 +171,7 @@ variable "build_compute_type" {
 variable "dockerhub_username" {
   description = "DockerHub username for pushing images"
   type        = string
-  default     = "joebaho2"
+  default     = "thiexco"
 }
 
 variable "dockerhub_password" {
@@ -191,7 +191,7 @@ variable "create_dns" {
 variable "domain_name" {
   description = "Domain name for Route53 record"
   type        = string
-  default     = "joebahocloud.com"
+  default     = "cojocloud.com"
 }
 
 variable "subdomain" {
@@ -223,7 +223,7 @@ variable "enable_alb_ssl" {
 variable "certificate_arn" {
   description = "ARN of SSL certificate for ALB"
   type        = string
-  default     = "arn:aws:acm:us-west-2:546310954125:certificate/327520bc-1081-4377-8fb4-1065dd31f6cb"
+  default     = ""
 }
 
 # Autoscaling Configuration
