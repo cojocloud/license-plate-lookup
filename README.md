@@ -332,4 +332,4 @@ terraform destroy -var-file="../scripts/terraform.tfvars"
 
 **Terraform init fails — S3 backend not found**
 - Ensure the `baho-backup-bucket` S3 bucket exists in `us-west-2` before running `terraform init`
-- Create it if needed: `aws s3 mb s3://baho-backup-bucket --region us-west-2`
+- Create it if needed: `aws s3 mb s3://baho-backup-bucket --region us-east-1`
