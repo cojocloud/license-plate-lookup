@@ -412,6 +412,13 @@ resource "aws_codepipeline" "main" {
         branches {
           includes = [var.github_branch]
         }
+        file_paths {
+          includes = [
+            "app/**",
+            "docker/**",
+            "buildspec.yml"
+          ]
+        }
       }
     }
   }
