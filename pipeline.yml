@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: License Plate Validator CI/CD Pipeline
+Description: California License Plate Validator CI/CD Pipeline
 
 Parameters:
   Environment:
