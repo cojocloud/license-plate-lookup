@@ -9,22 +9,22 @@ Parameters:
       - dev
       - staging
       - prod
-  
+
   GitHubOwner:
     Type: String
-    Default: YOUR_GITHUB_USERNAME
-  
+    Default: cojocloud
+
   GitHubRepo:
     Type: String
     Default: license-plate-lookup
-  
+
   GitHubBranch:
     Type: String
     Default: main
-  
-  GitHubToken:
+
+  CodeStarConnectionArn:
     Type: String
-    NoEcho: true
+    Description: ARN of the AWS CodeStar connection to GitHub (must be in AVAILABLE status)
 
 Resources:
   CodeBuildProject:
@@ -41,7 +41,7 @@ Resources:
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
-        Image: aws/codebuild/standard:5.0
+        Image: aws/codebuild/standard:7.0
         PrivilegedMode: true
         EnvironmentVariables:
           - Name: ENVIRONMENT
@@ -68,19 +68,18 @@ Resources:
             - Name: GitHub-Source
               ActionTypeId:
                 Category: Source
-                Owner: ThirdParty
+                Owner: AWS
                 Version: 1
-                Provider: GitHub
+                Provider: CodeStarSourceConnection
               Configuration:
-                Owner: !Ref GitHubOwner
-                Repo: !Ref GitHubRepo
-                Branch: !Ref GitHubBranch
-                OAuthToken: !Ref GitHubToken
-                PollForSourceChanges: false
+                ConnectionArn: !Ref CodeStarConnectionArn
+                FullRepositoryId: !Sub ${GitHubOwner}/${GitHubRepo}
+                BranchName: !Ref GitHubBranch
+                OutputArtifactFormat: CODE_ZIP
               OutputArtifacts:
                 - Name: SourceArtifact
               RunOrder: 1
-        
+
         - Name: Build
           Actions:
             - Name: Build-And-Test
@@ -96,7 +95,7 @@ Resources:
               OutputArtifacts:
                 - Name: BuildArtifact
               RunOrder: 1
-        
+
         - Name: Deploy
           Actions:
             - Name: Deploy-To-ECS
@@ -167,6 +166,11 @@ Resources:
                 Resource:
                   - !Sub arn:aws:s3:::${ArtifactStoreBucket}/*
                   - !Sub arn:aws:s3:::${ArtifactStoreBucket}
+              - Effect: Allow
+                Action:
+                  - ecs:UpdateService
+                  - ecs:DescribeServices
+                Resource: '*'
 
   CodePipelineServiceRole:
     Type: AWS::IAM::Role
@@ -202,20 +206,24 @@ Resources:
                 Condition:
                   StringEquals:
                     iam:PassedToService: ecs-tasks.amazonaws.com
+              - Effect: Allow
+                Action:
+                  - codestar-connections:UseConnection
+                Resource: !Ref CodeStarConnectionArn
 
 Outputs:
   CodeBuildProjectName:
     Description: CodeBuild Project Name
     Value: !Ref CodeBuildProject
-  
+
   CodePipelineName:
     Description: CodePipeline Name
     Value: !Ref CodePipeline
-  
+
   ArtifactStoreBucketName:
     Description: S3 Bucket for Artifacts
     Value: !Ref ArtifactStoreBucket
-  
-  PipelineWebhookURL:
-    Description: GitHub Webhook URL
+
+  PipelineConsoleURL:
+    Description: CodePipeline Console URL
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/codesuite/codepipeline/pipelines/${CodePipeline}/view

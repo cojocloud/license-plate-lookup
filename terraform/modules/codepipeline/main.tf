@@ -127,6 +127,14 @@ resource "aws_iam_role_policy" "codebuild" {
           "secretsmanager:GetSecretValue"
         ]
         Resource = ["*"]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameters",
+          "ssm:GetParameter"
+        ]
+        Resource = ["arn:aws:ssm:*:*:parameter/${var.project_name}/*"]
       }
     ]
   })

@@ -9,8 +9,10 @@ env:
     ECS_CLUSTER: "${ecs_cluster_name}"
     ECS_SERVICE: "${ecs_service_name}"
     ENVIRONMENT: "${environment}"
+%{ if dockerhub_username != "" ~}
   parameter-store:
     DOCKERHUB_PASSWORD: "/${project_name}/${environment}/dockerhub/password"
+%{ endif ~}
 
 phases:
   pre_build:
@@ -19,11 +21,8 @@ phases:
       - echo "Logging in to Amazon ECR..."
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPOSITORY_URL
       
-      - echo "Checking if ECR repository exists..."
-      - if ! aws ecr describe-repositories --repository-names "$IMAGE_REPO_NAME" --region $AWS_DEFAULT_REGION > /dev/null 2>&1; then
-          echo "Creating ECR repository..."
-          aws ecr create-repository --repository-name "$IMAGE_REPO_NAME" --region $AWS_DEFAULT_REGION --image-scanning-configuration scanOnPush=true
-        fi
+      - echo "Verifying ECR repository exists..."
+      - aws ecr describe-repositories --repository-names "$IMAGE_REPO_NAME" --region $AWS_DEFAULT_REGION
       
       - echo "Setting image tags..."
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
@@ -31,7 +30,8 @@ phases:
       - IMAGE_URI=$ECR_REPOSITORY_URL:$IMAGE_TAG
       
       - echo "Logging in to DockerHub (if credentials provided)..."
-      - if [ -n "${dockerhub_username}" ] && [ -n "$DOCKERHUB_PASSWORD" ]; then
+      - |
+        if [ -n "${dockerhub_username}" ] && [ -n "$DOCKERHUB_PASSWORD" ]; then
           echo "$DOCKERHUB_PASSWORD" | docker login --username "${dockerhub_username}" --password-stdin
         fi
 
@@ -42,7 +42,8 @@ phases:
       - docker tag $IMAGE_REPO_NAME:latest $ECR_REPOSITORY_URL:latest
       - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $ECR_REPOSITORY_URL:$IMAGE_TAG
       
-      - if [ -n "${dockerhub_username}" ]; then
+      - |
+        if [ -n "${dockerhub_username}" ]; then
           echo "Tagging for DockerHub..."
           docker tag $IMAGE_REPO_NAME:latest ${dockerhub_username}/${project_name}:latest
           docker tag $IMAGE_REPO_NAME:$IMAGE_TAG ${dockerhub_username}/${project_name}:$IMAGE_TAG
@@ -54,15 +55,15 @@ phases:
       - docker push $ECR_REPOSITORY_URL:latest
       - docker push $ECR_REPOSITORY_URL:$IMAGE_TAG
       
-      - if [ -n "${dockerhub_username}" ]; then
+      - |
+        if [ -n "${dockerhub_username}" ]; then
           echo "Pushing images to DockerHub..."
           docker push ${dockerhub_username}/${project_name}:latest
           docker push ${dockerhub_username}/${project_name}:$IMAGE_TAG
         fi
       
       - echo "Writing image definitions file..."
-      - printf '[{"name":"%s-container-%s","imageUri":"%s","essential":true,"portMappings":[{"containerPort":8080,"hostPort":8080,"protocol":"tcp"}]}]' \
-          "${project_name}" "${environment}" "$ECR_REPOSITORY_URL:latest" > imagedefinitions.json
+      - printf '[{"name":"%s-container-%s","imageUri":"%s"}]' "${project_name}" "${environment}" "$ECR_REPOSITORY_URL:latest" > imagedefinitions.json
       
       - echo "Displaying image definitions:"
       - cat imagedefinitions.json
