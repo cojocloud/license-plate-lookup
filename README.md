@@ -370,3 +370,15 @@ aws s3api delete-bucket --bucket licenses-plate-bucket --region us-east-1
 **Terraform init fails: S3 backend not found**
 - The `licenses-plate-bucket` must exist before running `terraform init`
 - Run the bucket creation commands from Step 1
+
+---
+
+## Screenshots
+
+### Application
+
+![California License Plate Validator](images/app.png)
+
+### CI/CD Pipeline (auto-triggered by git push)
+
+![CodePipeline — Source → Build → Deploy](images/pipeline.png)
