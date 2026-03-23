@@ -379,6 +379,10 @@ aws s3api delete-bucket --bucket licenses-plate-bucket --region us-east-1
 
 ![California License Plate Validator](images/app.png)
 
+<br><br><br>
+
+---
+
 ### CI/CD Pipeline (auto-triggered by git push)
 
 ![CodePipeline — Source → Build → Deploy](images/pipeline.png)
