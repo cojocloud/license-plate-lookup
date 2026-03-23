@@ -338,8 +338,9 @@ resource "aws_codestarconnections_connection" "github" {
 
 # CodePipeline
 resource "aws_codepipeline" "main" {
-  name     = "${var.project_name}-pipeline-${var.environment}"
-  role_arn = aws_iam_role.codepipeline.arn
+  name          = "${var.project_name}-pipeline-${var.environment}"
+  role_arn      = aws_iam_role.codepipeline.arn
+  pipeline_type = "V2"
 
   artifact_store {
     location = aws_s3_bucket.artifacts.bucket
@@ -398,6 +399,18 @@ resource "aws_codepipeline" "main" {
         ClusterName = var.ecs_cluster_name
         ServiceName = var.ecs_service_name
         FileName    = "imagedefinitions.json"
+      }
+    }
+  }
+
+  trigger {
+    provider_type = "CodeStarSourceConnection"
+    git_configuration {
+      source_action_name = "Source"
+      push {
+        branches {
+          includes = [var.github_branch]
+        }
       }
     }
   }
