@@ -203,6 +203,7 @@ resource "aws_iam_role_policy" "codepipeline" {
           "ecs:DescribeTasks",
           "ecs:ListTasks",
           "ecs:RegisterTaskDefinition",
+          "ecs:TagResource",
           "ecs:UpdateService"
         ]
         Resource = ["*"]
@@ -236,7 +237,7 @@ resource "aws_codebuild_project" "main" {
 
   environment {
     compute_type    = var.build_compute_type
-    image           = "aws/codebuild/standard:5.0"
+    image           = "aws/codebuild/standard:7.0"
     type            = "LINUX_CONTAINER"
     privileged_mode = true
 

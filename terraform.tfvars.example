@@ -15,8 +15,7 @@ vpc_cidr            = "10.0.0.0/16"
 allowed_cidr_blocks = ["0.0.0.0/0"]
 
 # GitHub Configuration
-# Replace with your GitHub username and repo name
-github_owner     = "cojocloud"
+github_owner     = "YOUR_GITHUB_ORG_OR_USERNAME"
 github_repo_name = "license-plate-lookup"
 github_branch    = "main"
 
@@ -24,11 +23,11 @@ github_branch    = "main"
 dockerhub_username = ""
 
 # CodeStar Connection ARN (created once via AWS CLI, approved in console)
-# aws codestar-connections create-connection --provider-type GitHub --connection-name license-plate-github --region us-east-1
-codestar_connection_arn = "arn:aws:codestar-connections:us-east-1:970547342192:connection/c3d58888-0d73-4ad0-9dde-49667d9167f8"
+# aws codestar-connections create-connection --provider-type GitHub --connection-name licenses-plate-github --region us-east-1
+codestar_connection_arn = "arn:aws:codestar-connections:us-east-1:YOUR_ACCOUNT_ID:connection/YOUR-ID"
 
 # DNS & SSL Configuration
 create_dns     = true
-domain_name    = "cojocloudsolutions.com"
+domain_name    = "YOUR_DOMAIN.com"
 subdomain      = "license"
 enable_alb_ssl = true

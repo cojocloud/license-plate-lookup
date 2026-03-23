@@ -56,8 +56,8 @@ output "target_group_name" {
 output "alb_listener_arns" {
   description = "ARNs of ALB listeners"
   value = {
-    http  = aws_lb_listener.http.arn
-    https = var.enable_alb_ssl && var.certificate_arn != "" ? aws_lb_listener.https[0].arn : null
+    http  = var.enable_alb_ssl ? null : aws_lb_listener.http[0].arn
+    https = var.enable_alb_ssl ? aws_lb_listener.https[0].arn : null
   }
 }
 

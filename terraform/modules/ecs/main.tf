@@ -55,8 +55,10 @@ resource "aws_lb_target_group" "app" {
   })
 }
 
-# HTTP Listener
+# HTTP Listener (only when SSL is disabled; replaced by redirect listener when SSL is on)
 resource "aws_lb_listener" "http" {
+  count = var.enable_alb_ssl ? 0 : 1
+
   load_balancer_arn = aws_lb.app.arn
   port              = "80"
   protocol          = "HTTP"
@@ -73,7 +75,7 @@ resource "aws_lb_listener" "http" {
 
 # HTTPS Listener (Optional)
 resource "aws_lb_listener" "https" {
-  count = var.enable_alb_ssl && var.certificate_arn != "" ? 1 : 0
+  count = var.enable_alb_ssl ? 1 : 0
 
   load_balancer_arn = aws_lb.app.arn
   port              = "443"
@@ -93,7 +95,7 @@ resource "aws_lb_listener" "https" {
 
 # Redirect HTTP to HTTPS (Optional)
 resource "aws_lb_listener" "http_redirect" {
-  count = var.enable_alb_ssl && var.certificate_arn != "" ? 1 : 0
+  count = var.enable_alb_ssl ? 1 : 0
 
   load_balancer_arn = aws_lb.app.arn
   port              = "80"

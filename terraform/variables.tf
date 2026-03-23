@@ -169,9 +169,9 @@ variable "build_compute_type" {
 
 # Docker Configuration
 variable "dockerhub_username" {
-  description = "DockerHub username for pushing images"
+  description = "DockerHub username for pushing images (leave empty to skip DockerHub)"
   type        = string
-  default     = "thiexco"
+  default     = ""
 }
 
 variable "dockerhub_password" {

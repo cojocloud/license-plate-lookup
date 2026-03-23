@@ -1,92 +1,83 @@
 # License Plate Validator — AWS Pipeline Deployment
 
-A California license plate validation web application deployed on AWS ECS Fargate with a fully automated CI/CD pipeline.
+A California license plate validation web application deployed on AWS ECS Fargate with a fully automated CI/CD pipeline managed entirely by Terraform.
 
 ---
 
-## Architecture Overview
+## Architecture
 
 ```
 GitHub ──► CodePipeline ──► CodeBuild ──► ECR ──► ECS Fargate
+  (push)    (orchestrate)   (build/push)  (store)   (run)
                                                        │
                                               Application Load Balancer
                                                        │
-                                                   End Users
+                                                   http://<alb-dns>
 ```
 
-**AWS Services used:**
-- **CodePipeline** — orchestrates the CI/CD flow (Source → Build → Deploy)
-- **CodeBuild** — builds the Docker image and pushes to ECR
-- **ECR** — stores Docker images
-- **ECS Fargate** — runs the containerized Flask application
-- **Application Load Balancer** — routes traffic to ECS tasks
-- **VPC** — isolated network with public/private subnets across 2 AZs
-- **NAT Gateway** — allows ECS tasks in private subnets to reach the internet
-- **CloudWatch** — logs and monitoring
-- **S3** — Terraform state backend + CodePipeline artifact store
-- **DynamoDB** (optional) — Terraform state lock table
+**AWS Services:**
 
----
-
-## Deployment Overview
-
-There are **two separate deployments**:
-
-| Step | What | Tool |
-|------|------|------|
-| 1 | Deploy ECS infrastructure (VPC, ECS cluster, ALB, ECR, IAM) | Terraform |
-| 2 | Deploy CI/CD pipeline (CodePipeline + CodeBuild) | CloudFormation (`pipeline.yml`) |
-
-After both are deployed, every `git push` to `main` automatically triggers a new build and deploys the updated container to ECS.
+| Service | Purpose |
+|---------|---------|
+| CodePipeline | Orchestrates Source → Build → Deploy |
+| CodeBuild | Builds Docker image, pushes to ECR |
+| ECR | Stores Docker images |
+| ECS Fargate | Runs containerised Flask app |
+| ALB | Routes HTTP traffic to ECS tasks |
+| VPC | Isolated network with public/private subnets |
+| NAT Gateway | Outbound internet for ECS tasks in private subnets |
+| CloudWatch | Logs and container metrics |
+| CodeStar Connections | GitHub integration (webhook trigger) |
+| S3 | Terraform state backend + pipeline artifact store |
 
 ---
 
 ## Prerequisites
 
-Before starting, ensure you have the following installed and configured:
-
-- [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html) — configured with `aws configure`
+- [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html) configured with `aws configure`
 - [Terraform >= 1.0](https://developer.hashicorp.com/terraform/install)
-- A GitHub account with this repository forked or cloned
-- A DockerHub account (optional — only needed if pushing to DockerHub in addition to ECR)
-- An existing S3 bucket for Terraform state (`license-plate-bucket` in `us-east-1`)
+- GitHub repository with this code (forked or cloned under your account/org)
+- AWS IAM user with the following permissions:
+  - AdministratorAccess **or** scoped permissions covering IAM, ECS, EC2, ECR, S3, CodeBuild, CodePipeline, CodeStar Connections, CloudWatch, SSM
 
 ---
 
-## Create the Terraform State S3 Bucket
+## Step-by-Step Deployment
 
-Run this once before your first `terraform init`. The bucket must exist before Terraform can use it as a backend.
+### Step 1 — Create the Terraform State S3 Bucket
+
+Run this **once** before `terraform init`. The bucket must exist before Terraform can use it as a backend.
+
+> **Note:** `us-east-1` does not accept `LocationConstraint` — omit it for this region.
 
 ```bash
-# Create the bucket
+# Create bucket
 aws s3api create-bucket \
   --bucket licenses-plate-bucket \
   --region us-east-1
 
-# Enable versioning (allows state file recovery)
+# Enable versioning
 aws s3api put-bucket-versioning \
   --bucket licenses-plate-bucket \
   --versioning-configuration Status=Enabled
 
-# Enable server-side encryption
+# Enable encryption
 aws s3api put-bucket-encryption \
   --bucket licenses-plate-bucket \
   --server-side-encryption-configuration '{
     "Rules": [{
-      "ApplyServerSideEncryptionByDefault": {
-        "SSEAlgorithm": "AES256"
-      }
+      "ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}
     }]
   }'
 
-# Block all public access
+# Block public access
 aws s3api put-public-access-block \
   --bucket licenses-plate-bucket \
   --public-access-block-configuration \
     "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
 ```
 
-Verify the bucket is ready:
+Verify:
 ```bash
 aws s3api get-bucket-versioning --bucket licenses-plate-bucket
 aws s3api get-bucket-encryption --bucket licenses-plate-bucket
@@ -94,93 +85,124 @@ aws s3api get-bucket-encryption --bucket licenses-plate-bucket
 
 ---
 
-## Step-by-Step Deployment
+### Step 2 — Create and Approve the GitHub CodeStar Connection
 
-### Step 1 — Fill in your credentials
+Terraform uses this connection to link CodePipeline to GitHub. Run once.
 
-Before deploying, update the following placeholders across the configuration files:
-
-#### `terraform.tfvars`
-```hcl
-github_owner       = "YOUR_GITHUB_USERNAME"   # your GitHub username
-github_repo_name   = "license-plate-lookup"   # your repo name
-dockerhub_username = "YOUR_DOCKERHUB_USERNAME"
+```bash
+aws codestar-connections create-connection \
+  --provider-type GitHub \
+  --connection-name licenses-plate-github \
+  --region us-east-1
 ```
 
-#### `pipeline.yml` (CloudFormation parameters)
-The `GitHubOwner` default is `YOUR_GITHUB_USERNAME` — you will override this when deploying the stack (see Step 3).
+Copy the `ConnectionArn` from the output. Then **approve it in the AWS Console** (this GitHub OAuth step cannot be done via CLI):
 
-#### `terraform/variables.tf`
-Update the defaults for `github_owner` and `dockerhub_username` to match your accounts, or pass them via `terraform.tfvars`.
+> AWS Console → Developer Tools → Connections → `license-plate-github` → **Update pending connection** → authorize with GitHub
+
+**Critical:** During the GitHub authorization flow, grant access to the **organization** that owns the repository (e.g. `cojocloud`). If you skip this, pushes will not trigger the pipeline.
+
+To grant org access after the fact:
+1. Go to `github.com/settings/apps/authorizations`
+2. Find **AWS Connector for GitHub** → **Configure**
+3. Under **Organization access** → click **Grant** next to your org
+
+Verify the connection is AVAILABLE:
+```bash
+aws codestar-connections get-connection \
+  --connection-arn YOUR_CONNECTION_ARN \
+  --region us-east-1 \
+  --query "Connection.ConnectionStatus"
+```
+
+Must return `"AVAILABLE"` before proceeding.
 
 ---
 
-### Step 2 — Deploy Infrastructure with Terraform
+### Step 3 — Configure terraform.tfvars
 
-This deploys the VPC, ECS cluster, ALB, ECR repository, and IAM roles.
+Edit [terraform.tfvars](terraform.tfvars) and fill in your values:
+
+```hcl
+aws_region  = "us-east-1"
+environment = "dev"
+
+project_name     = "license-plate-validator"
+container_port   = 8080
+container_cpu    = 256
+container_memory = 512
+desired_count    = 1
+
+vpc_cidr            = "10.0.0.0/16"
+allowed_cidr_blocks = ["0.0.0.0/0"]
+
+github_owner     = "YOUR_GITHUB_ORG_OR_USERNAME"
+github_repo_name = "license-plate-lookup"
+github_branch    = "main"
+
+dockerhub_username = ""
+
+# Paste the ARN from Step 2
+codestar_connection_arn = "arn:aws:codestar-connections:us-east-1:ACCOUNT_ID:connection/YOUR-ID"
+```
+
+---
+
+### Step 4 — Grant IAM User the CodeStar PassConnection Permission
+
+If your IAM user is not a full administrator, add this policy:
+
+```bash
+aws iam put-user-policy \
+  --user-name YOUR_IAM_USERNAME \
+  --policy-name CodeStarConnectionsPass \
+  --policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Action": [
+        "codestar-connections:PassConnection",
+        "codestar-connections:UseConnection",
+        "codestar-connections:GetConnection",
+        "codestar-connections:ListConnections"
+      ],
+      "Resource": "*"
+    }]
+  }'
+```
+
+---
+
+### Step 5 — Deploy Infrastructure with Terraform
 
 ```bash
 cd terraform
 
-# Initialize Terraform (downloads providers, connects to S3 backend)
+# Download providers and connect to S3 backend
 terraform init
 
 # Preview what will be created
-terraform plan -var-file="../scripts/terraform.tfvars"
+terraform plan -var-file="../terraform.tfvars"
 
-# Deploy infrastructure (~5-10 minutes)
-terraform apply -var-file="../scripts/terraform.tfvars"
+# Deploy all infrastructure (~10-15 minutes)
+terraform apply -var-file="../terraform.tfvars"
 ```
 
-> **Sensitive variables** — pass `github_token` and `dockerhub_password` on the command line to avoid storing them in files:
-> ```bash
-> terraform apply \
->   -var-file="../scripts/terraform.tfvars" \
->   -var="github_token=ghp_xxxxxxxxxxxx" \
->   -var="dockerhub_password=YOUR_DOCKERHUB_TOKEN"
-> ```
+Type `yes` when prompted.
 
-After `apply` completes, note the outputs — especially:
-- `ecr_repository_url` — used by CodeBuild
-- `alb_dns_name` — the URL where the app will be accessible
+This creates: VPC, subnets, NAT Gateway, security groups, ALB, ECS cluster/service/task definition, ECR repository, IAM roles, CloudWatch log group, CodeBuild project, CodePipeline, and CodeStar connection.
 
----
-
-### Step 3 — Deploy the CI/CD Pipeline with CloudFormation
-
-The `pipeline.yml` CloudFormation template creates **CodePipeline** and **CodeBuild**.
-
+After apply, note the outputs:
 ```bash
-aws cloudformation deploy \
-  --template-file pipeline.yml \
-  --stack-name license-plate-validator-pipeline \
-  --capabilities CAPABILITY_IAM \
-  --region us-east-1 \
-  --parameter-overrides \
-      Environment=dev \
-      GitHubOwner=YOUR_GITHUB_USERNAME \
-      GitHubRepo=license-plate-lookup \
-      GitHubBranch=main \
-      GitHubToken=ghp_xxxxxxxxxxxx
-```
-
-> **Generating a GitHub token:**
-> Go to GitHub → Settings → Developer Settings → Personal Access Tokens → Tokens (classic)
-> Create a token with scopes: `repo`, `admin:repo_hook`
-
-To verify the stack was created:
-```bash
-aws cloudformation describe-stacks \
-  --stack-name license-plate-validator-pipeline \
-  --region us-east-1 \
-  --query "Stacks[0].StackStatus"
+terraform output alb_dns_name       # Application URL
+terraform output ecr_repository_url # ECR image repository
 ```
 
 ---
 
-### Step 4 — Trigger the First Pipeline Run
+### Step 6 — Trigger the First Pipeline Run
 
-The pipeline triggers automatically on every push to `main`. To trigger it manually:
+The pipeline triggers automatically on every push to `main`. For the first run, trigger it manually:
 
 ```bash
 aws codepipeline start-pipeline-execution \
@@ -188,148 +210,163 @@ aws codepipeline start-pipeline-execution \
   --region us-east-1
 ```
 
-Or simply push a commit:
+Or push a commit:
 ```bash
 git add .
-git commit -m "trigger initial deployment"
+git commit -m "initial deployment"
 git push origin main
 ```
 
 ---
 
-### Step 5 — Monitor the Pipeline
+### Step 7 — Monitor the Pipeline
 
-**Via AWS Console:**
-1. Go to **CodePipeline** → `license-plate-validator-pipeline-dev`
-2. Watch the three stages: **Source** → **Build** → **Deploy**
-
-**Via CLI:**
 ```bash
 aws codepipeline get-pipeline-state \
   --name license-plate-validator-pipeline-dev \
-  --region us-east-1
+  --region us-east-1 \
+  --query "stageStates[*].{Stage:stageName,Status:latestExecution.status}" \
+  --output table
 ```
 
-**Build logs:**
-```bash
-# List recent builds
-aws codebuild list-builds-for-project \
-  --project-name license-plate-validator-build-dev \
-  --region us-east-1
+Expected progression:
+```
+Source    → Succeeded
+Build     → Succeeded
+Deploy    → Succeeded
+```
 
-# View logs in CloudWatch
-aws logs tail /aws/codebuild/license-plate-validator-dev --follow
+View build logs:
+```bash
+aws logs tail /aws/codebuild/license-plate-validator-dev --follow --region us-east-1
 ```
 
 ---
 
-### Step 6 — Access the Application
-
-Once the Deploy stage completes, get the ALB DNS name:
+### Step 8 — Access the Application
 
 ```bash
 terraform -chdir=terraform output alb_dns_name
 ```
 
-Open the URL in your browser:
-```
-http://<alb-dns-name>
-```
+Open `http://<alb-dns-name>` in your browser.
 
-The app provides:
-- **`/`** — Web UI for validating California license plates
-- **`/api/validate`** — POST endpoint for single plate validation
-- **`/api/bulk-validate`** — POST endpoint for batch validation
-- **`/api/health`** — Health check (used by ALB)
-- **`/api/formats`** — List of all supported plate formats
+Available endpoints:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Web UI |
+| `/api/health` | GET | Health check |
+| `/api/validate` | POST | Validate a plate |
+| `/api/bulk-validate` | POST | Validate multiple plates |
+| `/api/random` | GET | Generate random plate |
+| `/api/formats` | GET | List all plate formats |
 
 ---
 
-## Resource Naming Convention
+## Resource Naming
 
-All resources follow this pattern: `{project_name}-{resource_type}-{environment}`
+All resources follow the pattern `{project_name}-{resource}-{environment}`:
 
-| Resource | Name |
-|----------|------|
+| Resource | Name (dev) |
+|----------|-----------|
 | ECS Cluster | `license-plate-validator-cluster-dev` |
 | ECS Service | `license-plate-validator-service-dev` |
 | Container | `license-plate-validator-container-dev` |
 | ECR Repository | `license-plate-validator-dev` |
-| ALB | `license-plate-validator-dev-alb` |
 | CodePipeline | `license-plate-validator-pipeline-dev` |
-| CodeBuild Project | `license-plate-validator-build-dev` |
-| CloudWatch Log Group | `/ecs/license-plate-validator-dev` |
+| CodeBuild | `license-plate-validator-build-dev` |
+| ALB | `license-plate-validator-dev-alb` |
+| CloudWatch Logs | `/ecs/license-plate-validator-dev` |
 
 ---
 
-## Configuration Reference
+## How the Pipeline Works
 
-### `scripts/terraform.tfvars`
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `aws_region` | AWS region for all resources | `us-east-1` |
-| `environment` | Environment name (`dev`, `staging`, `prod`) | `dev` |
-| `project_name` | Base name for all resources | `license-plate-validator` |
-| `container_port` | Port the Flask app listens on | `8080` |
-| `container_cpu` | Fargate CPU units (256 = 0.25 vCPU) | `256` |
-| `container_memory` | Fargate memory in MiB | `512` |
-| `desired_count` | Number of ECS tasks | `1` |
-| `github_owner` | Your GitHub username | — |
-| `github_repo_name` | Your GitHub repository name | `license-plate-lookup` |
-| `github_branch` | Branch to trigger pipeline | `main` |
-| `dockerhub_username` | DockerHub username | — |
-
-### Terraform State Backend (`terraform/backend.tf`)
-| Setting | Value |
-|---------|-------|
-| S3 Bucket | `baho-backup-bucket` |
-| Key | `terraform-state-file/ca-lic-plate` |
-| Region | `us-west-2` |
-| Encryption | `true` |
-
-> The state bucket region (`us-west-2`) can differ from the deployment region (`us-east-1`).
+```
+1. Developer pushes to main branch on GitHub
+2. CodeStar Connection webhook notifies CodePipeline
+3. CodePipeline Source stage pulls the code into S3 artifact store
+4. CodePipeline Build stage triggers CodeBuild:
+   a. Logs into ECR
+   b. Builds Docker image using docker/Dockerfile
+   c. Tags image with commit hash and 'latest'
+   d. Pushes both tags to ECR
+   e. Writes imagedefinitions.json with container name + image URI
+5. CodePipeline Deploy stage:
+   a. Reads imagedefinitions.json
+   b. Updates ECS task definition with new image URI
+   c. Updates ECS service to use new task definition
+   d. ECS performs rolling deployment (zero downtime)
+```
 
 ---
 
 ## Teardown
 
-To destroy all resources:
+Run in this order to avoid dependency errors:
 
 ```bash
-# 1. Delete the CloudFormation pipeline stack
-aws cloudformation delete-stack \
-  --stack-name license-plate-validator-pipeline \
-  --region us-east-1
-
-# Wait for deletion
-aws cloudformation wait stack-delete-complete \
-  --stack-name license-plate-validator-pipeline \
-  --region us-east-1
-
-# 2. Destroy all Terraform-managed infrastructure
+# 1. Destroy all Terraform infrastructure
 cd terraform
-terraform destroy -var-file="../scripts/terraform.tfvars"
-```
+terraform destroy -var-file="../terraform.tfvars"
 
-> **Note:** ECR has `force_delete = true` so the repository and all images are deleted automatically. The Terraform state S3 bucket (`baho-backup-bucket`) is NOT managed by Terraform and will not be deleted.
+# 2. Delete CodeStar connections
+aws codestar-connections list-connections --region us-east-1
+aws codestar-connections delete-connection \
+  --connection-arn YOUR_CONNECTION_ARN \
+  --region us-east-1
+
+# 3. Delete the Terraform state bucket (optional)
+aws s3 rm s3://licenses-plate-bucket --recursive --region us-east-1
+aws s3api delete-bucket --bucket licenses-plate-bucket --region us-east-1
+```
 
 ---
 
 ## Troubleshooting
 
-**Pipeline fails at Build stage — ECR login error**
-- Verify the CodeBuild IAM role has `ecr:GetAuthorizationToken` permission (already in `pipeline.yml`)
-- Check that the ECR repository exists: `aws ecr describe-repositories --region us-east-1`
+**Pipeline does not trigger on git push**
+- The CodeStar Connection must have access to the GitHub org that owns the repo
+- Go to `github.com/settings/apps/authorizations` → AWS Connector for GitHub → Configure → grant org access
+- Verify connection status is `AVAILABLE`
 
-**Pipeline fails at Deploy stage — ECS service not found**
-- Confirm Terraform was applied before deploying the pipeline
-- Check cluster/service names match: `aws ecs list-services --cluster license-plate-validator-cluster-dev`
+**Build fails: `toomanyrequests` (Docker Hub rate limit)**
+- The Dockerfile uses `public.ecr.aws/docker/library/python:3.9-slim` to avoid Docker Hub entirely
+- Ensure the `FROM` line in `docker/Dockerfile` uses the ECR Public mirror
+
+**Build fails: SSM parameter not found**
+- Only occurs when `dockerhub_username` is non-empty in `terraform.tfvars`
+- Either set `dockerhub_username = ""` or create the SSM parameter:
+  ```bash
+  aws ssm put-parameter \
+    --name "/license-plate-validator/dev/dockerhub/password" \
+    --value "YOUR_DOCKERHUB_TOKEN" \
+    --type SecureString --region us-east-1
+  ```
+
+**Deploy fails: ECS container not found**
+- The container name in `imagedefinitions.json` must exactly match the container name in the ECS task definition
+- Both are derived from `{project_name}-container-{environment}` — ensure `project_name` and `environment` are consistent in `terraform.tfvars`
 
 **ALB returns 503**
-- ECS task may still be starting (wait ~2 minutes after deployment)
-- Check task health: `aws ecs describe-tasks --cluster license-plate-validator-cluster-dev --tasks $(aws ecs list-tasks --cluster license-plate-validator-cluster-dev --query taskArns[0] --output text)`
-- Check CloudWatch logs: `aws logs tail /ecs/license-plate-validator-dev --follow`
+- ECS task may still be starting — wait 2-3 minutes after a deployment
+- Check task status:
+  ```bash
+  aws ecs describe-services \
+    --cluster license-plate-validator-cluster-dev \
+    --services license-plate-validator-service-dev \
+    --region us-east-1 \
+    --query "services[0].{Running:runningCount,Desired:desiredCount,Status:status}"
+  ```
+- Check container logs:
+  ```bash
+  aws logs tail /ecs/license-plate-validator-dev --follow --region us-east-1
+  ```
 
-**Terraform init fails — S3 backend not found**
-- Ensure the `baho-backup-bucket` S3 bucket exists in `us-west-2` before running `terraform init`
-- Create it if needed: `aws s3 mb s3://baho-backup-bucket --region us-east-1`
+**`AccessDeniedException: codestar-connections:PassConnection`**
+- The IAM user needs the `PassConnection` permission — see Step 4 above
+
+**Terraform init fails: S3 backend not found**
+- The `licenses-plate-bucket` must exist before running `terraform init`
+- Run the bucket creation commands from Step 1
