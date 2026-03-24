@@ -25,7 +25,7 @@ dockerhub_username = ""
 
 # CodeStar Connection ARN (created once via AWS CLI, approved in console)
 # aws codestar-connections create-connection --provider-type GitHub --connection-name license-plate-github --region us-east-1
-codestar_connection_arn = "arn:aws:codestar-connections:us-east-1:970547342192:connection/c3d58888-0d73-4ad0-9dde-49667d9167f8"
+codestar_connection_arn = "arn:aws:codeconnections:us-east-1:970547342192:connection/120eb9d9-4412-46f7-8b0e-bd52f9e560f1"
 
 # DNS & SSL Configuration
 create_dns     = true

@@ -245,11 +245,15 @@ aws logs tail /aws/codebuild/license-plate-validator-dev --follow --region us-ea
 
 ### Step 8 — Access the Application
 
+Open `https://license.cojocloudsolutions.com` in your browser.
+
+HTTP requests are automatically redirected to HTTPS.
+
+If you are not using a custom domain, you can get the ALB DNS name directly:
+
 ```bash
 terraform -chdir=terraform output alb_dns_name
 ```
-
-Open `http://<alb-dns-name>` in your browser.
 
 Available endpoints:
 
@@ -307,17 +311,18 @@ All resources follow the pattern `{project_name}-{resource}-{environment}`:
 Run in this order to avoid dependency errors:
 
 ```bash
-# 1. Destroy all Terraform infrastructure
+# 1. Destroy all Terraform-managed infrastructure
+# (VPC, ECS, ALB, ECR, CodePipeline, CodeBuild, ACM cert, Route53 records, S3 artifacts bucket)
 cd terraform
 terraform destroy -var-file="../terraform.tfvars"
 
-# 2. Delete CodeStar connections
+# 2. Delete the CodeStar connection (created outside Terraform)
 aws codestar-connections list-connections --region us-east-1
 aws codestar-connections delete-connection \
   --connection-arn YOUR_CONNECTION_ARN \
   --region us-east-1
 
-# 3. Delete the Terraform state bucket (optional)
+# 3. Delete the Terraform state bucket (optional — keeps your state history)
 aws s3 rm s3://licenses-plate-bucket --recursive --region us-east-1
 aws s3api delete-bucket --bucket licenses-plate-bucket --region us-east-1
 ```

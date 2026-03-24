@@ -1,6 +1,7 @@
 # S3 Bucket for Artifacts
 resource "aws_s3_bucket" "artifacts" {
-  bucket = "${var.project_name}-artifacts-${var.environment}-${random_id.suffix.hex}"
+  bucket        = "${var.project_name}-artifacts-${var.environment}-${random_id.suffix.hex}"
+  force_destroy = true
 
   tags = merge(var.tags, {
     Name = "${var.project_name}-artifacts"
